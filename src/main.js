@@ -10,19 +10,19 @@ async function load(){
  const {data:{session}}=await supabase.auth.getSession();
  if(!session){showLogin();return}
  try{
- const me=await result(supabase.from('members').select('*').eq('email',session.user.email.toLowerCase()).maybeSingle());
- if(!me){await result(supabase.rpc('request_membership'));const request=await result(supabase.from('signup_requests').select('*').eq('user_id',session.user.id).maybeSingle());showPending(request,session.user.email);return}
- const [products,accounts,videos,members,requests]=await Promise.all([result(supabase.from('products').select('*')),result(supabase.from('accounts').select('*')),result(supabase.from('videos').select('*').order('created',{ascending:false})),me.role==='admin'?result(supabase.from('members').select('*')):[],me.role==='admin'?result(supabase.from('signup_requests').select('*').eq('status','pending').order('created')):[]]);
+ const me=await result(supabase.from('kontenflow_members').select('*').eq('email',session.user.email.toLowerCase()).maybeSingle());
+ if(!me){await result(supabase.rpc('kontenflow_request_membership'));const request=await result(supabase.from('kontenflow_signup_requests').select('*').eq('user_id',session.user.id).maybeSingle());showPending(request,session.user.email);return}
+ const [products,accounts,videos,members,requests]=await Promise.all([result(supabase.from('kontenflow_products').select('*')),result(supabase.from('kontenflow_accounts').select('*')),result(supabase.from('kontenflow_videos').select('*').order('created',{ascending:false})),me.role==='admin'?result(supabase.from('kontenflow_members').select('*')):[],me.role==='admin'?result(supabase.from('kontenflow_signup_requests').select('*').eq('status','pending').order('created')):[]]);
  document.body.classList.remove('auth-mode');data={me,products,accounts,videos,members,requests};$('#username').textContent=me.name;$('#role').textContent={admin:'Administrator',editor:'Tim Editor',sosmed:'Tim Sosmed'}[me.role];$('#initial').textContent=me.name[0].toUpperCase();$('#membernav').hidden=!admin();render();
  }catch(e){$('#app').innerHTML='<div class="empty"><h3>Belum dapat memuat workspace</h3><p>'+esc(e.message)+'</p><button class="btn" onclick="load()">Coba lagi</button></div>'}
 }
 async function result(q){const {data,error}=await q;if(error)throw error;return data}
 async function post(b){
- if(b.action==='product')return result(supabase.from('products').insert({name:b.name.trim()}));
- if(b.action==='account')return result(supabase.from('accounts').insert({product:b.product,name:b.name.trim(),handle:b.handle.trim()}));
- if(b.action==='member')return result(supabase.rpc('save_member',{member_email:b.email.toLowerCase().trim(),member_name:b.name,member_role:b.role,member_accounts:b.accounts}));
- if(b.action==='video')return result(supabase.from('videos').insert({account:b.account,title:b.title.trim(),url:b.url,notes:b.notes||''}));
- if(['posted','restore'].includes(b.action))return result(supabase.rpc('set_posted',{video_id:b.id,is_posted:b.action==='posted'}));
+ if(b.action==='product')return result(supabase.from('kontenflow_products').insert({name:b.name.trim()}));
+ if(b.action==='account')return result(supabase.from('kontenflow_accounts').insert({product:b.product,name:b.name.trim(),handle:b.handle.trim()}));
+ if(b.action==='member')return result(supabase.rpc('kontenflow_save_member',{member_email:b.email.toLowerCase().trim(),member_name:b.name,member_role:b.role,member_accounts:b.accounts}));
+ if(b.action==='video')return result(supabase.from('kontenflow_videos').insert({account:b.account,title:b.title.trim(),url:b.url,notes:b.notes||''}));
+ if(['posted','restore'].includes(b.action))return result(supabase.rpc('kontenflow_set_posted',{video_id:b.id,is_posted:b.action==='posted'}));
  throw Error('Aksi tidak dikenal');
 }
 function showLogin(mode='login',message=''){data=null;document.body.classList.add('auth-mode');
@@ -31,7 +31,7 @@ function showLogin(mode='login',message=''){data=null;document.body.classList.ad
 
  const signing=mode==='signup';
  if(signing){
- $('.auth-card h1').textContent='Daftar anggota tim';$('.auth-card>p').textContent='Buat akun, lalu tunggu persetujuan admin.';
+ $('.auth-card h1').textContent='Daftar anggota tim';$('.auth-card>p').textContent='Punya akun di aplikasi lain dalam project yang sama? Gunakan Masuk. Pengguna baru bisa daftar di sini.';
  $('#login').insertAdjacentHTML('afterbegin',field('Nama lengkap','name','Nama kamu'));
  $('#login button[type=submit]').textContent='Daftar & ajukan akses';$('#reset').hidden=true;
  $('.auth-help').innerHTML='Sudah punya akun? <button type="button" class="auth-switch" id="signup-switch">Masuk</button>';
@@ -45,9 +45,9 @@ function showLogin(mode='login',message=''){data=null;document.body.classList.ad
  e.preventDefault();const f=new FormData(e.target),btn=e.target.querySelector('button[type=submit]');btn.disabled=true;btn.textContent=signing?'Mendaftarkan…':'Sedang masuk…';
  try{
  if(signing){
- const {data:registered,error}=await supabase.auth.signUp({email:f.get('email').trim(),password:f.get('password'),options:{data:{name:f.get('name').trim()},emailRedirectTo:location.origin}});
+ const {data:registered,error}=await supabase.auth.signUp({email:f.get('email').trim(),password:f.get('password'),options:{data:{name:f.get('name').trim(),app_code:'kontenflow'},emailRedirectTo:location.origin}});
  if(error)throw error;
- if(registered.session)await load();else showLogin('login','Cek email untuk konfirmasi akun, lalu masuk. Jika email sudah terdaftar, gunakan login atau lupa password.');
+ if(registered.session)await load();else showLogin('login','Cek email untuk konfirmasi akun, lalu masuk. Jika email sudah terdaftar di aplikasi lain, gunakan akun dan password yang sama.');
  }else{const {error}=await supabase.auth.signInWithPassword({email:f.get('email').trim(),password:f.get('password')});if(error)throw error;await load()}
  }catch(err){$('#loginerror').textContent=err.message;btn.disabled=false;btn.textContent=signing?'Daftar & ajukan akses':'Masuk ke workspace →'}
  };
@@ -60,14 +60,14 @@ function showPending(request,email){
  $('#check-approval').onclick=()=>load();$('#pending-signout').onclick=async()=>{await supabase.auth.signOut();showLogin()};
 }
 function pendingList(){
- const requests=data.requests||[];
+ const requests=(data.requests||[]).filter(r=>!data.members.some(m=>m.email===r.email));
  return '<div class="sectionhead"><h2>Menunggu persetujuan <span class="count">'+requests.length+'</span></h2><button class="btn" onclick="load()">↻ Perbarui</button></div>'+(requests.length?'<div class="members"><table><thead><tr><th>PENDAFTAR</th><th>TANGGAL DAFTAR</th><th>AKSI</th></tr></thead><tbody>'+requests.map((r,i)=>'<tr><td><b>'+esc(r.name)+'</b><div class="small">'+esc(r.email)+'</div></td><td>'+date(r.created)+'</td><td><div style="display:flex;gap:8px"><button class="btn primary" onclick="reviewForm('+i+',true)">Setujui</button><button class="btn" onclick="reviewForm('+i+',false)">Tolak</button></div></td></tr>').join('')+'</tbody></table></div>':'<div class="empty" style="padding:25px"><p>Belum ada permintaan baru.</p></div>');
 }
 function reviewForm(index,approve){
  const r=data.requests[index];if(!r)return;
  if(approve&&!data.accounts.length){toast('Tambahkan akun TikTok sebelum menyetujui anggota');return}
  const fields='<p>'+esc(r.name)+' · '+esc(r.email)+'</p>'+(approve?'<label class="field">Peran<select name="role"><option value="editor">Editor — tambah video</option><option value="sosmed">Sosmed — tandai posting</option></select></label><div class="field">Akun yang boleh diakses (minimal satu)</div><div class="checks">'+data.accounts.map(a=>'<label><input type="checkbox" name="accounts" value="'+a.id+'">'+esc(a.name)+' <span class="small">'+esc(a.handle)+'</span></label>').join('')+'</div>':'<p style="margin-top:16px">Pendaftar ini tidak akan mendapat akses ke konten tim.</p>');
- dialog(approve?'Setujui anggota':'Tolak permintaan',fields,async f=>{if(approve&&!f.getAll('accounts').length)throw Error('Pilih minimal satu akun');return result(supabase.rpc('review_signup',{request_user_id:r.user_id,approve,assigned_role:approve?f.get('role'):null,assigned_accounts:approve?f.getAll('accounts'):[]}))});
+ dialog(approve?'Setujui anggota':'Tolak permintaan',fields,async f=>{if(approve&&!f.getAll('accounts').length)throw Error('Pilih minimal satu akun');return result(supabase.rpc('kontenflow_review_signup',{request_user_id:r.user_id,approve,assigned_role:approve?f.get('role'):null,assigned_accounts:approve?f.getAll('accounts'):[]}))});
 }
 function toast(t){$('#toast').textContent=t;$('#toast').style.display='block';setTimeout(()=>$('#toast').style.display='none',3200)}
 function stats(){return '<div class="stats">'+[['Total produk',data.products.length,'Produk di workspace','◇'],['Akun TikTok',data.accounts.length,'Akun yang bisa kamu akses','♪'],['Siap posting',data.videos.filter(v=>!v.posted).length,'Video menunggu diposting','▷'],['Sudah posting',data.videos.filter(v=>v.posted).length,'Tersimpan di riwayat','✓']].map(s=>'<div class="stat"><div class="stathead">'+s[0]+'<i>'+s[3]+'</i></div><div class="num">'+s[1]+'</div><small>'+s[2]+'</small></div>').join('')+'</div>'}
