@@ -7,7 +7,6 @@ const $=s=>document.querySelector(s),esc=s=>String(s??'').replace(/[&<>"']/g,c=>
 const admin=()=>data.me.role==='admin',canUpload=()=>['admin','editor'].includes(data.me.role),canPost=()=>['admin','sosmed'].includes(data.me.role);
 const date=s=>new Date(s).toLocaleDateString('id-ID',{day:'numeric',month:'short',year:'numeric',timeZone:'Asia/Jakarta'});
 async function load(){
- document.body.classList.add('auth-mode');
  const {data:{session}}=await supabase.auth.getSession();
  if(!session){showLogin();return}
  try{
