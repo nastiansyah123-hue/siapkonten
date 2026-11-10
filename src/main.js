@@ -7,13 +7,14 @@ const $=s=>document.querySelector(s),esc=s=>String(s??'').replace(/[&<>"']/g,c=>
 const admin=()=>data.me.role==='admin',canUpload=()=>['admin','editor'].includes(data.me.role),canPost=()=>['admin','sosmed'].includes(data.me.role);
 const date=s=>new Date(s).toLocaleDateString('id-ID',{day:'numeric',month:'short',year:'numeric',timeZone:'Asia/Jakarta'});
 async function load(){
+ document.body.classList.add('auth-mode');
  const {data:{session}}=await supabase.auth.getSession();
  if(!session){showLogin();return}
  try{
  const me=await result(supabase.from('members').select('*').eq('email',session.user.email.toLowerCase()).maybeSingle());
  if(!me){$('#app').innerHTML='<div class="empty"><h3>Akses belum diberikan</h3><p>Minta admin menambahkan email '+esc(session.user.email)+'.</p></div>';return}
  const [products,accounts,videos,members]=await Promise.all([result(supabase.from('products').select('*')),result(supabase.from('accounts').select('*')),result(supabase.from('videos').select('*').order('created',{ascending:false})),me.role==='admin'?result(supabase.from('members').select('*')):[]]);
- data={me,products,accounts,videos,members};$('#username').textContent=me.name;$('#role').textContent={admin:'Administrator',editor:'Tim Editor',sosmed:'Tim Sosmed'}[me.role];$('#initial').textContent=me.name[0].toUpperCase();$('#membernav').hidden=!admin();render();
+ document.body.classList.remove('auth-mode');data={me,products,accounts,videos,members};$('#username').textContent=me.name;$('#role').textContent={admin:'Administrator',editor:'Tim Editor',sosmed:'Tim Sosmed'}[me.role];$('#initial').textContent=me.name[0].toUpperCase();$('#membernav').hidden=!admin();render();
  }catch(e){$('#app').innerHTML='<div class="empty"><h3>Belum dapat memuat workspace</h3><p>'+esc(e.message)+'</p><button class="btn" onclick="load()">Coba lagi</button></div>'}
 }
 async function result(q){const {data,error}=await q;if(error)throw error;return data}
@@ -25,10 +26,11 @@ async function post(b){
  if(['posted','restore'].includes(b.action))return result(supabase.rpc('set_posted',{video_id:b.id,is_posted:b.action==='posted'}));
  throw Error('Aksi tidak dikenal');
 }
-function showLogin(){data=null;
+function showLogin(){data=null;document.body.classList.add('auth-mode');
  $('#username').textContent='Belum masuk';$('#role').textContent='Login anggota';$('#membernav').hidden=true;
- $('#app').innerHTML='<div class="empty" style="max-width:450px;margin:50px auto"><div class="welcome">SELAMAT DATANG DI KONTENFLOW</div><h1>Masuk ke workspace</h1><p>Gunakan email yang sudah didaftarkan admin.</p><form id="login">'+field('Email','email','nama@tim.com','','email')+field('Password','password','Password akun','','password')+'<div class="error" id="loginerror"></div><button class="btn primary" style="width:100%;margin-top:20px">Masuk</button></form><button class="btn" style="margin-top:12px" id="reset">Lupa password</button></div>';
- $('#login').onsubmit=async e=>{e.preventDefault();const f=new FormData(e.target);const btn=e.target.querySelector('button');btn.disabled=true;const {error}=await supabase.auth.signInWithPassword({email:f.get('email'),password:f.get('password')});btn.disabled=false;if(error)$('#loginerror').textContent=error.message;else load()};
+ $('#app').innerHTML='<section class="auth-page"><div class="auth-story"><div class="brand"><span class="logo">k</span>kontenflow<span style="color:#62a78b">.</span></div><div class="auth-copy"><div class="auth-eyebrow">RUANG KERJA TIM KONTEN</div><h2>Konten siap.<br>Tim seirama.</h2><p>Satu tempat untuk hasil edit, akun tujuan, dan video yang siap diposting.</p><div class="auth-flow"><span>Hasil edit</span>→<span>Siap posting</span>→<span>Sudah tayang</span></div></div><div class="auth-foot">Alur sederhana. Semua tertata.</div></div><div class="auth-panel"><div class="auth-card"><div class="brand auth-mobile-brand"><span class="logo">k</span>kontenflow.</div><div class="auth-eyebrow">SELAMAT DATANG KEMBALI</div><h1>Masuk ke workspace</h1><p>Lanjutkan pekerjaanmu bersama tim.</p><form id="login">'+field('Email','email','nama@tim.com','','email')+field('Password','password','Masukkan password','','password')+'<div class="error" id="loginerror" role="status" aria-live="polite"></div><button class="btn primary auth-submit" type="submit">Masuk ke workspace <span aria-hidden="true">→</span></button></form><button class="auth-forgot" id="reset" type="button">Lupa password?</button><div class="auth-help">Belum punya akses? Hubungi admin tim kamu.</div></div></div></section>';
+ $('#login input[name=email]').autocomplete='username';$('#login input[name=password]').autocomplete='current-password';
+ $('#login').onsubmit=async e=>{e.preventDefault();const f=new FormData(e.target);const btn=e.target.querySelector('button');btn.disabled=true;btn.textContent='Sedang masuk…';const {error}=await supabase.auth.signInWithPassword({email:f.get('email'),password:f.get('password')});btn.disabled=false;btn.textContent='Masuk ke workspace →';if(error)$('#loginerror').textContent=error.message;else load()};
  $('#reset').onclick=async()=>{const email=$('#login input[name=email]').value;if(!email){$('#loginerror').textContent='Isi email terlebih dahulu';return}const {error}=await supabase.auth.resetPasswordForEmail(email,{redirectTo:location.origin});$('#loginerror').textContent=error?error.message:'Jika email terdaftar, link reset akan dikirim.'};
 }
 function toast(t){$('#toast').textContent=t;$('#toast').style.display='block';setTimeout(()=>$('#toast').style.display='none',3200)}
