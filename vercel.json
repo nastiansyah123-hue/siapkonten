@@ -1,1 +1,19 @@
-{"buildCommand":"npm run build","outputDirectory":"dist","framework":"vite","rewrites":[{"source":"/((?!assets/).*)","destination":"/index.html"}]}
+{
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
+  "framework": "vite",
+  "rewrites": [
+    {
+      "source": "/((?!api/|assets/).*)",
+      "destination": "/index.html"
+    }
+  ],
+  "functions": {
+    "api/whatsapp-groups.js": {
+      "maxDuration": 60
+    },
+    "api/notify-video.js": {
+      "maxDuration": 30
+    }
+  }
+}
