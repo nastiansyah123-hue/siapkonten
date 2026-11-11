@@ -39,7 +39,7 @@ async function groupRequest(action,groupId){
  const {data:{session}}=await supabase.auth.getSession();if(!session)throw Error('Silakan login ulang');
  const response=await fetch('/api/whatsapp-groups',{method:action?'POST':'GET',headers:{Authorization:'Bearer '+session.access_token,...(action?{'Content-Type':'application/json'}:{})},...(action?{body:JSON.stringify({action,groupId})}:{})});
  let payload;try{payload=await response.json()}catch{throw Error('API grup belum tersedia. Pastikan file api/whatsapp-groups.js sudah dideploy di Vercel.')}
- if(!response.ok)throw Error(payload.error||'Belum bisa memuat grup');return payload;
+ if(!response.ok)throw Object.assign(Error(payload.error||'Belum bisa memuat grup'),{groupInfo:payload});return payload;
 }
 function whatsappGroups(){
  if(!admin())return;let groups=[],current=null,selected='',busy=false;
@@ -49,7 +49,12 @@ function whatsappGroups(){
  const payload=await groupRequest(action);if(!$('#wa-select'))return;groups=payload.groups||[];current=payload.selected;selected=selected||current?.id||payload.envTarget||'';
  $('#wa-current').textContent=current?'Tujuan tersimpan: '+current.name+' ('+current.id+')':payload.envTarget?'Tujuan saat ini dari ENV: '+payload.envTarget:'Belum ada grup tujuan yang disimpan.';
  $('#wa-info').textContent=groups.length?groups.length+' grup tersedia.'+(action?' Jika grup baru belum muncul, tunggu sebentar lalu Muat ulang daftar.':''):'Daftar grup masih kosong. Pastikan nomor WA Fonnte tergabung di grup tujuan, lalu klik Sinkronkan grup.';
- }catch(error){if($('#formerror'))$('#formerror').textContent=error.message;}finally{busy=false;if($('#wa-select')){$('#wa-sync').disabled=false;$('#wa-reload').disabled=false;populate()}}};
+ }catch(error){if($('#formerror')){
+ $('#formerror').textContent=error.message;
+ const info=error.groupInfo;
+ $('#wa-current').textContent=info?.selected?'Tujuan tersimpan: '+info.selected.name+' ('+info.selected.id+')':info?.envTarget?'Tujuan saat ini dari ENV: '+info.envTarget:'Pengaturan grup belum dapat dimuat. Pilihan sebelumnya tidak diubah.';
+ $('#wa-info').textContent=groups.length?'Daftar sebelumnya tetap ditampilkan. Pemuatan terbaru gagal.':'Daftar grup belum tersedia. Klik Sinkronkan grup, lalu Muat ulang daftar.';
+ }}finally{busy=false;if($('#wa-select')){$('#wa-sync').disabled=false;$('#wa-reload').disabled=false;populate()}}};
  $('#wa-select').onchange=e=>{selected=e.target.value;$('#save').disabled=busy||!selected};$('#wa-search').oninput=populate;$('#wa-sync').onclick=()=>refresh('sync');$('#wa-reload').onclick=()=>refresh();refresh();
 }
 function showLogin(mode='login',message=''){data=null;document.body.classList.add('auth-mode');
