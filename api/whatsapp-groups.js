@@ -1,13 +1,16 @@
 import { createClient } from '@supabase/supabase-js';
 const validGroup=id=>typeof id==='string'&&/^[\d-]+@g\.us$/.test(id);
 async function fonnte(path,token){
- const response=await fetch('https://api.fonnte.com/'+path,{method:'POST',headers:{Authorization:token},signal:AbortSignal.timeout(15000)});
- const payload=await response.json();
- if(!response.ok)throw Error('Fonnte belum merespons dengan baik. Coba lagi nanti.');
- if(payload.status!==true){
- if(path==='get-whatsapp-group'&&payload.detail==='you have no whatsapp group yet')return {data:[],status:true};
- if(payload.detail==='token invalid')throw Error('Token Fonnte tidak valid. Periksa ENV FONNTE_TOKEN di Vercel.');
- throw Error('Fonnte belum bisa mengambil grup. Pastikan perangkat terhubung dan nomor WA sudah bergabung ke grup, lalu coba Sinkronkan lagi.');
+ const action=path==='fetch-group'?'sinkronisasi grup':'pemuatan daftar grup';
+ let response;
+ try{response=await fetch('https://api.fonnte.com/'+path,{method:'POST',headers:{Authorization:token},signal:AbortSignal.timeout(15000)})}
+ catch(error){throw Error(error.name==='TimeoutError'?'Fonnte belum menyelesaikan '+action+'. Tunggu sebentar lalu Muat ulang daftar.':'Koneksi ke Fonnte gagal saat '+action+'. Coba lagi sebentar.');}
+ let payload;try{payload=await response.json()}catch{throw Error('Fonnte mengembalikan respons tidak valid saat '+action+' (HTTP '+response.status+').')}
+ const detail=[payload.detail,payload.reason,payload.message].filter(v=>typeof v==='string'&&v.trim()).join(' · ').split(token).join('[token disembunyikan]').slice(0,350);
+ if(path==='get-whatsapp-group'&&response.ok&&detail.toLowerCase().includes('you have no whatsapp group yet'))return {data:[],status:true};
+ if(!response.ok||payload.status!==true){
+ if(detail.toLowerCase().includes('token invalid'))throw Error('Token Fonnte tidak valid. Periksa ENV FONNTE_TOKEN di Vercel.');
+ throw Error('Fonnte menolak '+action+(detail?': '+detail:'. Tidak ada alasan rinci dari Fonnte.')+(response.ok?'':' (HTTP '+response.status+')')+(path==='get-whatsapp-group'?' Coba Sinkronkan grup terlebih dahulu.':''));
  }
  return payload;
 }
@@ -20,14 +23,17 @@ export default async function handler(req,res){
  if(!jwt)return res.status(401).json({error:'Silakan login'});
  if(!process.env.VITE_SUPABASE_URL||!process.env.VITE_SUPABASE_PUBLISHABLE_KEY)return res.status(503).json({error:'Konfigurasi Supabase belum lengkap'});
  const db=createClient(process.env.VITE_SUPABASE_URL,process.env.VITE_SUPABASE_PUBLISHABLE_KEY,{global:{headers:{Authorization:'Bearer '+jwt}},auth:{persistSession:false,autoRefreshToken:false}});
+ let knownSettings=null,authorized=false;
  try{
  const {data:{user},error:authError}=await db.auth.getUser(jwt);
  if(authError||!user)return res.status(401).json({error:'Sesi berakhir. Login ulang.'});
  const {data:me,error:memberError}=await db.from('kontenflow_members').select('role').eq('email',user.email.toLowerCase()).single();
  if(memberError||me?.role!=='admin')return res.status(403).json({error:'Khusus admin'});
+ authorized=true;
  const body=req.method==='POST'?(typeof req.body==='string'?JSON.parse(req.body):req.body)||{}:{};
  if(req.method==='POST'&&!['sync','save'].includes(body.action))return res.status(400).json({error:'Aksi tidak valid'});
  const {data:settings,error:settingsError}=await db.from('kontenflow_wa_settings').select('*').eq('id',true).maybeSingle();
+ knownSettings=settings;
  if(settingsError)return res.status(503).json({error:'Pengaturan grup belum tersedia. Pasang SQL 004_whatsapp_groups.sql terlebih dahulu.'});
  if(!process.env.FONNTE_TOKEN)return res.status(503).json({error:'Isi FONNTE_TOKEN di ENV Vercel, lalu redeploy.'});
  let synced=false;
@@ -41,5 +47,5 @@ export default async function handler(req,res){
  return res.status(200).json({ok:true,group:selected});
  }
  return res.status(200).json({groups,selected:settings?{id:settings.group_id,name:settings.group_name}:null,envTarget:process.env.FONNTE_TARGET||null,synced});
- }catch(error){return res.status(502).json({error:error.name==='TimeoutError'?'Sinkronisasi Fonnte belum selesai. Tunggu sebentar, lalu klik Muat ulang daftar.':error.message||'Belum bisa memuat grup Fonnte.'})}
+ }catch(error){return res.status(502).json({... (authorized?{selected:knownSettings?{id:knownSettings.group_id,name:knownSettings.group_name}:null,envTarget:process.env.FONNTE_TARGET||null}:{}),error:error.name==='TimeoutError'?'Sinkronisasi Fonnte belum selesai. Tunggu sebentar, lalu klik Muat ulang daftar.':error.message||'Belum bisa memuat grup Fonnte.'})}
 }
