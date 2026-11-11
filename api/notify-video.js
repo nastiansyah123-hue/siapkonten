@@ -21,7 +21,9 @@ export default async function handler(req,res){
  const {data:video,error:videoError}=await db.from('kontenflow_videos').select('*').eq('id',videoId).single();
  if(videoError||!video||(me.role!=='admin'&&video.creator_id!==user.id))return res.status(403).json({error:'Video tidak dapat diakses'});
  if(video.posted)return res.status(409).json({error:'Video sudah diposting'});
- const fonnteToken=process.env.FONNTE_TOKEN,target=process.env.FONNTE_TARGET;
+ const {data:savedTarget,error:targetError}=await db.rpc('kontenflow_notification_target');
+ if(targetError)return res.status(503).json({error:'Pengaturan grup belum tersedia. Minta admin memasang SQL 004.'});
+ const fonnteToken=process.env.FONNTE_TOKEN,target=savedTarget||process.env.FONNTE_TARGET;
  if(!fonnteToken||!target)return res.status(503).json({error:'Fonnte belum dikonfigurasi di Vercel'});
  const {data:account,error:accountError}=await db.from('kontenflow_accounts').select('*').eq('id',video.account).single();
  if(accountError||!account)return res.status(403).json({error:'Akun tidak dapat diakses'});
