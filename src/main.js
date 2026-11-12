@@ -104,31 +104,59 @@ function reviewForm(index,approve){
 function toast(t){$('#toast').textContent=t;$('#toast').style.display='block';setTimeout(()=>$('#toast').style.display='none',3200)}
 function openContent(status='ready'){view='content';account=null;query='';typeFilter='';videoAccountFilter='';tab=status;render()}
 function stats(){return '<div class="stats">'+[['Total produk',data.products.length,'Produk di workspace','◇',null],['Akun TikTok',data.accounts.length,'Akun yang bisa kamu akses','♪',null],['Siap posting',data.videos.filter(v=>!v.posted).length,'Lihat video siap posting →','▷','ready'],['Sudah posting',data.videos.filter(v=>v.posted).length,'Lihat riwayat posting →','✓','posted']].map(s=>'<'+(s[4]?'button type="button" onclick="openContent(\''+s[4]+'\')"':'div')+' class="stat" style="text-align:left"><div class="stathead">'+s[0]+'<i>'+s[3]+'</i></div><div class="num">'+s[1]+'</div><small>'+s[2]+'</small></'+(s[4]?'button':'div')+'>').join('')+'</div>'}
-let performanceMode='month',performanceDate='',performanceMonth='',performanceRequest=0;
+let performanceRange=null,performanceRequest=0;
 function jakartaToday(){const parts=Object.fromEntries(new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Jakarta',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date()).map(p=>[p.type,p.value]));return parts.year+'-'+parts.month+'-'+parts.day}
+function rangeKey(d){return d.toISOString().slice(0,10)}
+function rangeAdd(key,days){const d=new Date(key+'T00:00:00Z');d.setUTCDate(d.getUTCDate()+days);return rangeKey(d)}
+function rangeMonth(key,offset=0){const d=new Date(key+'T00:00:00Z');d.setUTCDate(1);d.setUTCMonth(d.getUTCMonth()+offset);return rangeKey(d)}
+function rangePreset(key,today=jakartaToday()){
+ const first=rangeMonth(today);
+ if(key==='month')return {start:first,end:rangeAdd(rangeMonth(today,1),-1),label:'Bulan Ini'};
+ if(key==='last-month')return {start:rangeMonth(today,-1),end:rangeAdd(first,-1),label:'Bulan Lalu'};
+ if(key==='today')return {start:today,end:today,label:'Hari Ini'};
+ if(key==='yesterday'){const day=rangeAdd(today,-1);return {start:day,end:day,label:'Kemarin'}}
+ const n=Number(key);return {start:rangeAdd(today,1-n),end:today,label:n+' Hari Terakhir'};
+}
+function rangeLabel(key){return new Date(key+'T12:00:00Z').toLocaleDateString('id-ID',{day:'numeric',month:'short',year:'numeric',timeZone:'UTC'})}
+function performanceCalendar(){
+ if(!performanceRange)performanceRange=rangePreset('month');let draft={...performanceRange},month=rangeMonth(draft.start),choosingEnd=false,preset=draft.label;
+ const presets=[['7','7 Hari Terakhir'],['14','14 Hari Terakhir'],['30','30 Hari Terakhir'],['90','90 Hari Terakhir'],['month','Bulan Ini'],['last-month','Bulan Lalu'],['today','Hari Ini'],['yesterday','Kemarin']];
+ $('#modal').classList.add('range-dialog');
+ const draw=()=>{
+ const first=new Date(month+'T00:00:00Z'),offset=(first.getUTCDay()+6)%7,gridStart=rangeAdd(month,-offset);
+ const title=first.toLocaleDateString('id-ID',{month:'long',year:'numeric',timeZone:'UTC'});
+ $('#modal').innerHTML='<div class="range-picker"><div class="range-presets">'+presets.map(([key,label])=>'<button type="button" data-preset="'+key+'" class="'+(preset===label?'selected':'')+'">'+label+'</button>').join('')+'</div><div class="range-main"><div class="range-head"><button type="button" class="btn" data-month="-1" aria-label="Bulan sebelumnya">‹</button><h2>'+esc(title)+'</h2><button type="button" class="btn" data-month="1" aria-label="Bulan berikutnya">›</button></div><p class="range-instruction" aria-live="polite">'+(choosingEnd?'Pilih tanggal akhir, lalu Terapkan.':'Pilih tanggal awal dan akhir, atau gunakan pilihan cepat.')+'</p><div class="range-week">'+['Sen','Sel','Rab','Kam','Jum','Sab','Min'].map(d=>'<span>'+d+'</span>').join('')+'</div><div class="range-grid">'+Array.from({length:42},(_,i)=>{const day=rangeAdd(gridStart,i),selected=day>=draft.start&&day<=draft.end,edge=day===draft.start||day===draft.end;return '<button type="button" data-day="'+day+'" aria-label="'+rangeLabel(day)+'" aria-pressed="'+selected+'" class="'+(selected?'in-range ':'')+(edge?'range-edge ':'')+(day.slice(0,7)!==month.slice(0,7)?'other-month ':'')+(day===jakartaToday()?'range-today':'')+'"><span>'+Number(day.slice(-2))+'</span></button>'}).join('')+'</div><div class="range-footer"><div class="range-summary">'+rangeLabel(draft.start)+' <span aria-hidden="true">→</span> '+rangeLabel(draft.end)+'</div><div class="range-actions"><button type="button" class="btn" data-cancel>Batal</button><button type="button" class="btn primary" data-apply>Terapkan</button></div></div></div></div>';
+ };
+ $('#modal').onclick=e=>{const button=e.target.closest('button');if(!button)return;
+ if(button.hasAttribute('data-cancel')){$('#modal').close();return}
+ if(button.hasAttribute('data-apply')){performanceRange={...draft,label:preset||'Rentang Khusus'};$('#modal').close();renderPerformance();return}
+ if(button.dataset.month){month=rangeMonth(month,Number(button.dataset.month));draw();return}
+ if(button.dataset.preset){draft=rangePreset(button.dataset.preset);month=rangeMonth(draft.start);preset=draft.label;choosingEnd=false;draw();return}
+ if(button.dataset.day){const day=button.dataset.day;preset='';if(!choosingEnd){draft={start:day,end:day};choosingEnd=true}else{draft={start:day<draft.start?day:draft.start,end:day<draft.start?draft.start:day};choosingEnd=false}draw()}
+ };
+ draw();$('#modal').showModal();
+ $('#modal').addEventListener('close',()=>{$('#modal').classList.remove('range-dialog');$('#modal').onclick=null},{once:true});
+}
 function renderPerformance(){
  if(!admin()){$('#app').innerHTML='<div class="empty">Rekap seluruh tim hanya untuk admin.</div>';return}
- const today=jakartaToday();performanceDate=performanceDate||today;performanceMonth=performanceMonth||today.slice(0,7);
- $('#app').innerHTML='<div class="heading"><div><div class="welcome">TEAM PERFORMANCE</div><h1>Performa Tim</h1><p>Jumlah kiriman editor dan posting sosmed dalam satu periode.</p></div></div><div class="performance-filter"><label class="field">Periode<select id="performance-mode"><option value="month" '+(performanceMode==='month'?'selected':'')+'>Bulanan</option><option value="day" '+(performanceMode==='day'?'selected':'')+'>Harian</option></select></label><label class="field">'+(performanceMode==='month'?'Bulan':'Tanggal')+'<input id="performance-date" type="'+(performanceMode==='month'?'month':'date')+'" value="'+(performanceMode==='month'?performanceMonth:performanceDate)+'" required></label><button class="btn" id="performance-refresh">↻ Perbarui</button></div><p class="small" style="margin-bottom:20px">Zona waktu: Jakarta (WIB). Editor berdasarkan waktu kirim; sosmed berdasarkan waktu penandaan Sudah Posting.</p><div id="performance-result" aria-live="polite"></div>';
- $('#performance-mode').onchange=e=>{performanceMode=e.target.value;renderPerformance()};
- $('#performance-date').onchange=e=>{if(performanceMode==='month')performanceMonth=e.target.value;else performanceDate=e.target.value;fetchPerformance()};
- $('#performance-refresh').onclick=fetchPerformance;fetchPerformance();
+ if(!performanceRange)performanceRange=rangePreset('month');
+ $('#app').innerHTML='<div class="heading"><div><div class="welcome">TEAM PERFORMANCE</div><h1>Performa Tim</h1><p>Jumlah kiriman editor dan posting sosmed dalam satu periode.</p></div></div><div class="performance-filter"><button class="btn performance-range-button" id="performance-range"><span aria-hidden="true">▦</span><span><b>'+esc(performanceRange.label)+'</b><small>'+rangeLabel(performanceRange.start)+' → '+rangeLabel(performanceRange.end)+'</small></span><span aria-hidden="true">⌄</span></button><button class="btn" id="performance-refresh">↻ Perbarui</button></div><p class="small" style="margin-bottom:20px">Zona waktu: Jakarta (WIB). Tanggal awal dan akhir termasuk dalam rekap.</p><div id="performance-result" aria-live="polite"></div>';
+ $('#performance-range').onclick=performanceCalendar;$('#performance-refresh').onclick=fetchPerformance;fetchPerformance();
 }
 async function fetchPerformance(){
  const seq=++performanceRequest;
- const chosen=performanceMode==='month'?performanceMonth+'-01':performanceDate;
- if(!/^\d{4}-\d{2}-\d{2}$/.test(chosen)){$('#performance-result').innerHTML='<p class="error">Pilih tanggal atau bulan yang valid.</p>';return}
  $('#performance-result').innerHTML='<div class="empty">Memuat rekap tim…</div>';$('#performance-refresh').disabled=true;
  try{
- const report=await result(supabase.rpc('kontenflow_team_performance',{period_mode:performanceMode,chosen_date:chosen}));
+ const report=await result(supabase.rpc('kontenflow_team_performance_range',{start_date:performanceRange.start,end_date:performanceRange.end}));
  if(seq!==performanceRequest||view!=='performance')return;
  const sum=rows=>rows.reduce((total,r)=>total+Number(r.total),0),editors=report.editors||[],sosmed=report.sosmed||[];
- const period=performanceMode==='month'?new Date(chosen+'T12:00:00+07:00').toLocaleDateString('id-ID',{month:'long',year:'numeric',timeZone:'Asia/Jakarta'}):new Date(chosen+'T12:00:00+07:00').toLocaleDateString('id-ID',{day:'numeric',month:'long',year:'numeric',timeZone:'Asia/Jakarta'});
+ const period=rangeLabel(performanceRange.start)+' → '+rangeLabel(performanceRange.end);
  const cards=[['Video dikirim',sum(editors),'Kiriman editor dalam periode'],['Video diposting',sum(sosmed),'Ditandai Sudah Posting'],['Editor aktif',editors.filter(r=>Number(r.total)>0).length,'Anggota yang mengirim video'],['Sosmed aktif',sosmed.filter(r=>Number(r.total)>0).length,'Anggota yang menandai posting']];
  $('#performance-result').innerHTML='<div class="sectionhead"><h2>'+esc(period)+'</h2></div><div class="stats">'+cards.map(c=>'<div class="stat"><div class="stathead">'+c[0]+'</div><div class="num">'+c[1]+'</div><small>'+c[2]+'</small></div>').join('')+'</div><div class="performance-panels">'+performanceTable('Tim Editor',editors,'Video dikirim')+performanceTable('Tim Sosmed',sosmed,'Video diposting')+'</div><div class="notice">Hitungan memakai data video yang masih tersimpan. Posting dihitung saat ditandai di Kontenflow, bukan dari statistik TikTok. Membatalkan status posting atau menghapus video mengubah rekap.</div>';
- }catch(error){if(seq===performanceRequest&&view==='performance')$('#performance-result').innerHTML='<div class="empty"><h3>Rekap belum dapat dimuat</h3><p>'+esc(error.message)+'</p><p class="small">Pastikan SQL 005_team_performance.sql sudah dipasang, lalu klik Perbarui.</p></div>'}
+ }catch(error){if(seq===performanceRequest&&view==='performance')$('#performance-result').innerHTML='<div class="empty"><h3>Rekap belum dapat dimuat</h3><p>'+esc(error.message)+'</p><p class="small">Pastikan SQL 006_performance_date_range.sql sudah dipasang, lalu klik Perbarui.</p></div>'}
  finally{if(seq===performanceRequest&&view==='performance'&&$('#performance-refresh'))$('#performance-refresh').disabled=false}
 }
+
 function performanceTable(title,rows,metric){
  return '<section><div class="sectionhead"><h2>'+title+'</h2><span class="small">'+rows.length+' anggota</span></div>'+(rows.length?'<div class="members performance-table"><table><thead><tr><th>ANGGOTA</th><th>'+metric.toUpperCase()+'</th></tr></thead><tbody>'+rows.map(r=>'<tr><td data-label="ANGGOTA"><b>'+esc(r.name)+'</b><div class="small">'+esc(r.email)+'</div></td><td data-label="'+metric.toUpperCase()+'"><span class="performance-count">'+Number(r.total)+'</span> <span class="small">video</span></td></tr>').join('')+'</tbody></table></div>':'<div class="empty"><p>Belum ada anggota atau aktivitas pada periode ini.</p></div>')+'</section>';
 }
